@@ -1,0 +1,20 @@
+# Terraform configuration for VPC with Bastion Host
+# Copy this file: cp terraform.tfvars.example terraform.tfvars
+# Update the values below for your AWS account
+
+# AWS region where resources will be deployed
+aws_region = "us-east-1"
+
+# Project name used for tagging all resources
+project_name = "vpc-bastion-nat"
+
+# REQUIRED: Name of your AWS EC2 key pair (must exist in your AWS account)
+# Create one in AWS console: https://console.aws.amazon.com/ec2/v2/home?#KeyPairs:
+# Or via CLI: aws ec2 create-key-pair --key-name your-key-name --query 'KeyMaterial' --output text > your-key-name.pem
+key_pair_name = "your-key-pair-name"
+
+# Optional: Specific AMI ID for EC2 instances
+# If left empty, Terraform automatically fetches the latest Amazon Linux 2023 AMI
+# Find AMI IDs: https://console.aws.amazon.com/ec2/v2/home#Images:
+# ami_id = "ami-0c55b159cbfafe1f0"
+

@@ -1,0 +1,38 @@
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+terraform/.terraformrc
+terraform/terraform.rc
+
+# SSH Keys
+*.pem
+*.key
+id_rsa*
+*.ppk
+
+# AWS Credentials
+.aws/
+credentials
+config
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test results (optional - uncomment if you want to ignore test outputs)
+# tests/*.txt
+# tests/*.json
+
+# Screenshots (optional - uncomment if you want to ignore screenshots)
+# screenshots/*.png
+# screenshots/*.jpg
+

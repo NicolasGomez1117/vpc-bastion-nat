@@ -1,0 +1,256 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Production-ready AWS VPC with Bastion Host, Private Subnets, and NAT Gateway'
+
+Parameters:
+  MyIP:
+    Type: String
+    Description: Your public IP address in CIDR notation (e.g., 1.2.3.4/32)
+    Default: 0.0.0.0/32
+  
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair to enable SSH access
+  
+  InstanceType:
+    Type: String
+    Description: EC2 instance type
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+
+Resources:
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-vpc'
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-igw'
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  # Elastic IP for NAT Gateway
+  NATGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-nat-eip'
+
+  # Public Subnet
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public-subnet'
+
+  # Private Subnet
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-private-subnet'
+
+  # NAT Gateway
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      AllocationId: !GetAtt NATGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-nat'
+
+  # Public Route Table
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public-rt'
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet
+
+  # Private Route Table
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-private-rt'
+
+  DefaultPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+
+  PrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet
+
+  # Security Group for Bastion
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${AWS::StackName}-bastion-sg'
+      GroupDescription: Security group for bastion host
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref MyIP
+          Description: SSH from my IP
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-bastion-sg'
+
+  # Security Group for Private EC2
+  PrivateSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${AWS::StackName}-private-sg'
+      GroupDescription: Security group for private EC2 instance
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref BastionSecurityGroup
+          Description: SSH from bastion
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-private-sg'
+
+  # Get latest Amazon Linux 2023 AMI
+  LatestAMI:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64
+
+  # Bastion Host
+  BastionInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAMI
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref PublicSubnet
+      KeyName: !Ref KeyPairName
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-bastion'
+
+  # Private EC2 Instance
+  PrivateInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAMI
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref PrivateSubnet
+      KeyName: !Ref KeyPairName
+      SecurityGroupIds:
+        - !Ref PrivateSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-private'
+
+Outputs:
+  VPCId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${AWS::StackName}-VPCId'
+
+  PublicSubnetId:
+    Description: Public Subnet ID
+    Value: !Ref PublicSubnet
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicSubnetId'
+
+  PrivateSubnetId:
+    Description: Private Subnet ID
+    Value: !Ref PrivateSubnet
+    Export:
+      Name: !Sub '${AWS::StackName}-PrivateSubnetId'
+
+  BastionPublicIP:
+    Description: Bastion host public IP
+    Value: !GetAtt BastionInstance.PublicIp
+
+  BastionPrivateIP:
+    Description: Bastion host private IP
+    Value: !GetAtt BastionInstance.PrivateIp
+
+  PrivateInstanceIP:
+    Description: Private EC2 instance IP
+    Value: !GetAtt PrivateInstance.PrivateIp
+
+  NATGatewayIP:
+    Description: NAT Gateway public IP
+    Value: !GetAtt NATGatewayEIP.PublicIp
+
+  SSHBastionCommand:
+    Description: SSH command to connect to bastion
+    Value: !Sub 'ssh -i ${KeyPairName}.pem ec2-user@${BastionInstance.PublicIp}'
+
+  SSHPrivateCommand:
+    Description: SSH command to connect to private instance from bastion
+    Value: !Sub 'ssh -i ${KeyPairName}.pem ec2-user@${PrivateInstance.PrivateIp}'
+
