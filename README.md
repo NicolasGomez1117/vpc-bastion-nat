@@ -98,7 +98,7 @@ I designed and deployed a production-grade AWS network architecture featuring a 
 
 ## Architecture Diagram
 
-![Architecture Diagram](architecture-diagram.png)
+![Architecture Diagram](screenshots/cloudcraft-saa-project1.png)
 
 The architecture includes:
 - **VPC** (CIDR: 10.0.0.0/16)
