@@ -1,4 +1,4 @@
-# Secure AWS VPC with Bastion Host and Private Subnets (Production-Ready Architecture)
+# Secure AWS VPC with Bastion Host and Private Subnets ((Terraform IaC, AWS Networking, Zero-Trust Access)
 
 ## Quick Start (Deploy in 5 Minutes)
 
